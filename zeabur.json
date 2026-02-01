@@ -1,4 +1,9 @@
 {
-  "build_command": "npm install && npm run build",
-  "output_dir": "dist"
+  "$schema": "https://schema.zeabur.app/service.json",
+  "build": {
+    "type": "static",
+    "framework": "vite",
+    "build_command": "npm ci && npm run build",
+    "output_dir": "dist"
+  }
 }
