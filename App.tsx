@@ -805,7 +805,12 @@ const App: React.FC = () => {
       return eval1.rank > eval2.rank ? 1 : -1;
     }
 
-    // 同級比較
+    // 散牌對散牌直接判定為平手，不比點數
+    if (eval1.rank === 0 && eval2.rank === 0) {
+      return 0;
+    }
+
+    // 其他同級牌型比較點數
     for (let i = 0; i < Math.max(eval1.values.length, eval2.values.length); i++) {
       const v1 = eval1.values[i] || 0;
       const v2 = eval2.values[i] || 0;
