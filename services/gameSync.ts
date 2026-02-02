@@ -83,10 +83,8 @@ export const syncMatchView = async (
   roomId: string,
   matchView: MatchViewState
 ): Promise<void> => {
-  console.log('[HOST] syncMatchView called:', { roomId, p1Dice: matchView.p1Dice, p2Dice: matchView.p2Dice, status: matchView.status });
   const viewRef = ref(database, `rooms/${roomId}/matchView`);
   await set(viewRef, matchView);
-  console.log('[HOST] syncMatchView completed');
 };
 
 // 訂閱房間狀態變化（觀眾呼叫）
@@ -108,9 +106,7 @@ export const subscribeToRoom = (
 
   const matchViewUnsubscribe = onValue(matchViewRef, (snapshot) => {
     if (snapshot.exists()) {
-      const data = snapshot.val() as MatchViewState;
-      console.log('[VIEWER] received matchView update:', { p1Dice: data.p1Dice, p2Dice: data.p2Dice, status: data.status });
-      onMatchViewChange(data);
+      onMatchViewChange(snapshot.val() as MatchViewState);
     }
   });
 

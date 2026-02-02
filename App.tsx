@@ -102,7 +102,6 @@ const App: React.FC = () => {
   const syncViewDirectly = async (view: typeof initialMatchView) => {
     const currentRoomId = roomIdRef.current;
     const currentRoomMode = roomModeRef.current;
-    console.log('[DEBUG] syncViewDirectly called:', { currentRoomMode, currentRoomId, hasView: !!view });
     if (currentRoomMode === 'host' && currentRoomId) {
       // Firebase 不接受 undefined，所有欄位都必須有預設值
       const viewForSync: MatchViewState = {
@@ -132,7 +131,6 @@ const App: React.FC = () => {
 
   // 更新 matchView 並立即同步到 Firebase（用於遊戲動畫）
   const updateAndSyncMatchView = async (updater: ((prev: typeof initialMatchView) => typeof initialMatchView) | typeof initialMatchView) => {
-    console.log('[DEBUG] updateAndSyncMatchView called');
     const currentView = matchViewRef.current;
     const newView = typeof updater === 'function' ? updater(currentView) : updater;
     matchViewRef.current = newView;
@@ -905,11 +903,11 @@ const App: React.FC = () => {
   };
 
   const renderCard = (card: Card, index: number) => (
-    <div key={index} className="animate-scale-up inline-block mx-1">
-      <div className={`w-12 h-16 md:w-20 md:h-28 rounded-lg bg-white border-2 flex flex-col items-center justify-between p-1 md:p-2 shadow-lg ${['♥', '♦'].includes(card.suit) ? 'text-red-600 border-red-100' : 'text-black border-gray-100'}`}>
-        <div className="w-full text-left font-bold text-xs md:text-lg leading-none">{card.value}</div>
-        <div className="text-2xl md:text-5xl">{card.suit}</div>
-        <div className="w-full text-right font-bold text-xs md:text-lg leading-none rotate-180">{card.value}</div>
+    <div key={index} className="animate-scale-up inline-block mx-0.5 sm:mx-1">
+      <div className={`w-8 h-12 sm:w-12 sm:h-16 md:w-20 md:h-28 rounded-md sm:rounded-lg bg-white border sm:border-2 flex flex-col items-center justify-between p-0.5 sm:p-1 md:p-2 shadow-lg ${['♥', '♦'].includes(card.suit) ? 'text-red-600 border-red-100' : 'text-black border-gray-100'}`}>
+        <div className="w-full text-left font-bold text-[8px] sm:text-xs md:text-lg leading-none">{card.value}</div>
+        <div className="text-lg sm:text-2xl md:text-5xl">{card.suit}</div>
+        <div className="w-full text-right font-bold text-[8px] sm:text-xs md:text-lg leading-none rotate-180">{card.value}</div>
       </div>
     </div>
   );
@@ -918,20 +916,20 @@ const App: React.FC = () => {
   const DICE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 
   const renderDice = (dice: number[]) => (
-    <div className="flex gap-2">
+    <div className="flex gap-1 sm:gap-2 flex-wrap justify-center">
       {(dice || []).map((d, i) => (
-        <div key={i} className="animate-scale-up w-12 h-12 md:w-16 md:h-16 bg-white rounded-xl flex items-center justify-center shadow-lg border-2 border-red-200">
-          <span className="text-4xl md:text-5xl text-red-600">{DICE_FACES[d] || '?'}</span>
+        <div key={i} className="animate-scale-up w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 bg-white rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg border-2 border-red-200">
+          <span className="text-2xl sm:text-4xl md:text-5xl text-red-600">{DICE_FACES[d] || '?'}</span>
         </div>
       ))}
     </div>
   );
 
   return (
-    <div className="min-h-screen festive-bg text-white flex flex-col items-center p-4 md:p-8 overflow-hidden">
-      <header className="text-center mb-8 w-full z-10">
-        <h1 className="text-5xl md:text-8xl font-black gold-text drop-shadow-2xl mb-2 italic tracking-tighter">尾牙抽獎大對決</h1>
-        <p className="text-yellow-200 tracking-[0.3em] font-bold text-sm md:text-base opacity-80">CHAMPIONSHIP GALA 2025</p>
+    <div className="min-h-screen festive-bg text-white flex flex-col items-center p-2 sm:p-4 md:p-8 overflow-x-hidden">
+      <header className="text-center mb-2 sm:mb-4 md:mb-8 w-full z-10">
+        <h1 className="text-2xl sm:text-4xl md:text-8xl font-black gold-text drop-shadow-2xl mb-1 italic tracking-tighter">尾牙抽獎大對決</h1>
+        <p className="text-yellow-200 tracking-[0.1em] sm:tracking-[0.3em] font-bold text-xs sm:text-sm md:text-base opacity-80">CHAMPIONSHIP GALA 2025</p>
       </header>
 
       <main className="w-full max-w-6xl flex-1 flex flex-col z-10">
@@ -1110,74 +1108,78 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="lg:col-span-3 bg-black/50 rounded-[3rem] border-4 border-yellow-600/20 p-6 flex flex-col items-center justify-center relative min-h-[500px] shadow-2xl">
+            <div className="lg:col-span-3 bg-black/50 rounded-xl sm:rounded-[3rem] border-2 sm:border-4 border-yellow-600/20 p-2 sm:p-4 md:p-6 flex flex-col items-center justify-center relative min-h-[300px] sm:min-h-[400px] md:min-h-[500px] shadow-2xl">
               {(gameState.isSimulating || matchView.status === 'P1_TURN' || matchView.status === 'P2_TURN') ? (
-                <div className="w-full flex flex-col items-center justify-around h-full py-8">
-                  <div className="text-3xl font-black text-yellow-400 mb-8 animate-pulse bg-black/60 px-8 py-2 rounded-full border border-yellow-500/50">
+                <div className="w-full flex flex-col items-center justify-around h-full py-2 sm:py-4 md:py-8">
+                  <div className="text-sm sm:text-xl md:text-3xl font-black text-yellow-400 mb-2 sm:mb-4 md:mb-8 animate-pulse bg-black/60 px-3 sm:px-6 md:px-8 py-1 sm:py-2 rounded-full border border-yellow-500/50 text-center max-w-full">
                     {matchView.roundMessage}
                   </div>
-                  
-                  <div className="flex items-center justify-around w-full max-w-4xl gap-4">
+
+                  <div className="flex flex-col sm:flex-row items-center justify-around w-full max-w-4xl gap-2 sm:gap-4">
                     {/* Player 1 */}
-                    <div className="flex-1 flex flex-col items-center gap-4">
-                      <div className="w-24 h-24 md:w-36 md:h-36 rounded-full bg-red-600 flex items-center justify-center border-4 border-yellow-500 shadow-xl overflow-hidden relative">
-                         <span className="text-4xl md:text-6xl font-black">{gameState.matches[gameState.currentMatchIndex].p1.name[0]}</span>
-                         <div className="absolute bottom-0 w-full bg-black/60 text-[10px] py-1 text-center font-bold">P1</div>
+                    <div className="flex-1 flex flex-row sm:flex-col items-center gap-2 sm:gap-4 w-full sm:w-auto">
+                      <div className="w-16 h-16 sm:w-24 sm:h-24 md:w-36 md:h-36 rounded-full bg-red-600 flex items-center justify-center border-2 sm:border-4 border-yellow-500 shadow-xl overflow-hidden relative flex-shrink-0">
+                         <span className="text-2xl sm:text-4xl md:text-6xl font-black">{gameState.matches[gameState.currentMatchIndex].p1.name[0]}</span>
+                         <div className="absolute bottom-0 w-full bg-black/60 text-[8px] sm:text-[10px] py-0.5 sm:py-1 text-center font-bold">P1</div>
                       </div>
-                      <div className="text-xl font-black">{gameState.matches[gameState.currentMatchIndex].p1.name}</div>
-                      <div className="h-32 flex items-center justify-center flex-wrap gap-1">
-                        {gameState.roundNumber === 1 ? (
-                          (matchView.p1Dice?.length > 0) ? renderDice(matchView.p1Dice) : <div className="text-6xl animate-bounce">🎲</div>
-                        ) : (
-                          (matchView.p1Hand || []).map((c, idx) => renderCard(c, idx))
-                        )}
-                      </div>
-                      <div className="text-2xl font-black text-yellow-400 h-8">
-                        {gameState.roundNumber === 1 && matchView.p1DiceResult ? matchView.p1DiceResult : ''}
-                        {gameState.roundNumber === 2 && matchView.p1Score > 0 ? `${matchView.p1Score} 點` : ''}
-                        {gameState.roundNumber === 3 && (matchView.p1Hand?.length === 5) ? HAND_NAMES[evaluatePokerHand(matchView.p1Hand).rank] : ''}
-                      </div>
-                      {/* P1 控制按鈕 - 只有主持人可以操作，6點以下必須補牌 */}
-                      {roomMode === 'host' && gameState.roundNumber === 2 && matchView.status === 'P1_TURN' && matchView.p1Score <= 10.5 && (
-                        <div className="flex gap-4 mt-2">
-                          <button onClick={handleHit} className="px-6 py-3 bg-green-600 hover:bg-green-500 rounded-xl font-black text-lg transition-all">補牌</button>
-                          {matchView.p1Score >= 6 && (
-                            <button onClick={handlePass} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-black text-lg transition-all">停牌</button>
+                      <div className="flex flex-col items-center sm:items-center flex-1 sm:flex-none">
+                        <div className="text-sm sm:text-xl font-black">{gameState.matches[gameState.currentMatchIndex].p1.name}</div>
+                        <div className="min-h-[50px] sm:h-32 flex items-center justify-center flex-wrap gap-0.5 sm:gap-1">
+                          {gameState.roundNumber === 1 ? (
+                            (matchView.p1Dice?.length > 0) ? renderDice(matchView.p1Dice) : <div className="text-3xl sm:text-6xl animate-bounce">🎲</div>
+                          ) : (
+                            (matchView.p1Hand || []).map((c, idx) => renderCard(c, idx))
                           )}
                         </div>
-                      )}
+                        <div className="text-base sm:text-2xl font-black text-yellow-400">
+                          {gameState.roundNumber === 1 && matchView.p1DiceResult ? matchView.p1DiceResult : ''}
+                          {gameState.roundNumber === 2 && matchView.p1Score > 0 ? `${matchView.p1Score} 點` : ''}
+                          {gameState.roundNumber === 3 && (matchView.p1Hand?.length === 5) ? HAND_NAMES[evaluatePokerHand(matchView.p1Hand).rank] : ''}
+                        </div>
+                        {/* P1 控制按鈕 - 只有主持人可以操作，6點以下必須補牌 */}
+                        {roomMode === 'host' && gameState.roundNumber === 2 && matchView.status === 'P1_TURN' && matchView.p1Score <= 10.5 && (
+                          <div className="flex gap-2 sm:gap-4 mt-1 sm:mt-2">
+                            <button onClick={handleHit} className="px-3 sm:px-6 py-1.5 sm:py-3 bg-green-600 hover:bg-green-500 rounded-lg sm:rounded-xl font-black text-sm sm:text-lg transition-all">補牌</button>
+                            {matchView.p1Score >= 6 && (
+                              <button onClick={handlePass} className="px-3 sm:px-6 py-1.5 sm:py-3 bg-red-600 hover:bg-red-500 rounded-lg sm:rounded-xl font-black text-sm sm:text-lg transition-all">停牌</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="text-5xl md:text-7xl font-black italic gold-text animate-pulse">VS</div>
+                    <div className="text-2xl sm:text-5xl md:text-7xl font-black italic gold-text animate-pulse my-1 sm:my-0">VS</div>
 
                     {/* Player 2 */}
-                    <div className="flex-1 flex flex-col items-center gap-4">
-                      <div className="w-24 h-24 md:w-36 md:h-36 rounded-full bg-blue-600 flex items-center justify-center border-4 border-yellow-500 shadow-xl overflow-hidden relative">
-                         <span className="text-4xl md:text-6xl font-black">{gameState.matches[gameState.currentMatchIndex].p2?.name[0]}</span>
-                         <div className="absolute bottom-0 w-full bg-black/60 text-[10px] py-1 text-center font-bold">P2</div>
+                    <div className="flex-1 flex flex-row sm:flex-col items-center gap-2 sm:gap-4 w-full sm:w-auto">
+                      <div className="w-16 h-16 sm:w-24 sm:h-24 md:w-36 md:h-36 rounded-full bg-blue-600 flex items-center justify-center border-2 sm:border-4 border-yellow-500 shadow-xl overflow-hidden relative flex-shrink-0">
+                         <span className="text-2xl sm:text-4xl md:text-6xl font-black">{gameState.matches[gameState.currentMatchIndex].p2?.name[0]}</span>
+                         <div className="absolute bottom-0 w-full bg-black/60 text-[8px] sm:text-[10px] py-0.5 sm:py-1 text-center font-bold">P2</div>
                       </div>
-                      <div className="text-xl font-black">{gameState.matches[gameState.currentMatchIndex].p2?.name}</div>
-                      <div className="h-32 flex items-center justify-center flex-wrap gap-1">
-                        {gameState.roundNumber === 1 ? (
-                          (matchView.p2Dice?.length > 0) ? renderDice(matchView.p2Dice) : <div className="text-6xl animate-bounce">🎲</div>
-                        ) : (
-                          (matchView.p2Hand || []).map((c, idx) => renderCard(c, idx))
-                        )}
-                      </div>
-                      <div className="text-2xl font-black text-yellow-400 h-8">
-                        {gameState.roundNumber === 1 && matchView.p2DiceResult ? matchView.p2DiceResult : ''}
-                        {gameState.roundNumber === 2 && matchView.p2Score > 0 ? `${matchView.p2Score} 點` : ''}
-                        {gameState.roundNumber === 3 && (matchView.p2Hand?.length === 5) ? HAND_NAMES[evaluatePokerHand(matchView.p2Hand).rank] : ''}
-                      </div>
-                      {/* P2 控制按鈕 - 只有主持人可以操作，6點以下必須補牌 */}
-                      {roomMode === 'host' && gameState.roundNumber === 2 && matchView.status === 'P2_TURN' && matchView.p2Score <= 10.5 && (
-                        <div className="flex gap-4 mt-2">
-                          <button onClick={handleHit} className="px-6 py-3 bg-green-600 hover:bg-green-500 rounded-xl font-black text-lg transition-all">補牌</button>
-                          {matchView.p2Score >= 6 && (
-                            <button onClick={handlePass} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-black text-lg transition-all">停牌</button>
+                      <div className="flex flex-col items-center sm:items-center flex-1 sm:flex-none">
+                        <div className="text-sm sm:text-xl font-black">{gameState.matches[gameState.currentMatchIndex].p2?.name}</div>
+                        <div className="min-h-[50px] sm:h-32 flex items-center justify-center flex-wrap gap-0.5 sm:gap-1">
+                          {gameState.roundNumber === 1 ? (
+                            (matchView.p2Dice?.length > 0) ? renderDice(matchView.p2Dice) : <div className="text-3xl sm:text-6xl animate-bounce">🎲</div>
+                          ) : (
+                            (matchView.p2Hand || []).map((c, idx) => renderCard(c, idx))
                           )}
                         </div>
-                      )}
+                        <div className="text-base sm:text-2xl font-black text-yellow-400">
+                          {gameState.roundNumber === 1 && matchView.p2DiceResult ? matchView.p2DiceResult : ''}
+                          {gameState.roundNumber === 2 && matchView.p2Score > 0 ? `${matchView.p2Score} 點` : ''}
+                          {gameState.roundNumber === 3 && (matchView.p2Hand?.length === 5) ? HAND_NAMES[evaluatePokerHand(matchView.p2Hand).rank] : ''}
+                        </div>
+                        {/* P2 控制按鈕 - 只有主持人可以操作，6點以下必須補牌 */}
+                        {roomMode === 'host' && gameState.roundNumber === 2 && matchView.status === 'P2_TURN' && matchView.p2Score <= 10.5 && (
+                          <div className="flex gap-2 sm:gap-4 mt-1 sm:mt-2">
+                            <button onClick={handleHit} className="px-3 sm:px-6 py-1.5 sm:py-3 bg-green-600 hover:bg-green-500 rounded-lg sm:rounded-xl font-black text-sm sm:text-lg transition-all">補牌</button>
+                            {matchView.p2Score >= 6 && (
+                              <button onClick={handlePass} className="px-3 sm:px-6 py-1.5 sm:py-3 bg-red-600 hover:bg-red-500 rounded-lg sm:rounded-xl font-black text-sm sm:text-lg transition-all">停牌</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
