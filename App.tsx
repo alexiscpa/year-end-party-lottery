@@ -592,17 +592,31 @@ const App: React.FC = () => {
     const p1Five = matchView.p1Hand.length === 5 && !p1Bust;
     const p2Five = matchView.p2Hand.length === 5 && !p2Bust;
 
-    let winner: Participant;
+    let winner: Participant | null = null;
+
     if (p1Five && !p2Five) winner = match.p1;
     else if (!p1Five && p2Five) winner = match.p2!;
     else if (p1Bust && !p2Bust) winner = match.p2!;
     else if (!p1Bust && p2Bust) winner = match.p1;
-    else if (p1Bust && p2Bust) winner = s1 <= s2 ? match.p1 : match.p2!;
+    else if (p1Bust && p2Bust) {
+      // 都爆掉，分數低的獲勝；同分則重賽
+      if (s1 < s2) winner = match.p1;
+      else if (s2 < s1) winner = match.p2!;
+      else winner = null; // 同分，重賽
+    }
     else if (s1 > s2) winner = match.p1;
     else if (s2 > s1) winner = match.p2!;
-    else winner = Math.random() > 0.5 ? match.p1 : match.p2!;
+    else winner = null; // 同分，重賽
 
-    setMatchView(prev => ({ ...prev, status: 'RESULT', roundMessage: `${winner.name} 獲勝！` }));
+    // 同分時重新開始十點半
+    if (winner === null) {
+      setMatchView(prev => ({ ...prev, status: 'RESULT', roundMessage: `平手！${s1} 點 vs ${s2} 點，重新比賽！` }));
+      updateMC(`${match.p1.name} ${s1} 點 vs ${match.p2!.name} ${s2} 點，平手！重新發牌！`);
+      setTimeout(() => startTenHalfRound2(match), 3000);
+      return;
+    }
+
+    setMatchView(prev => ({ ...prev, status: 'RESULT', roundMessage: `🎉 ${winner.name} 獲勝！🎉` }));
     updateMC(`${match.p1.name} ${s1} 點 vs ${match.p2!.name} ${s2} 點。恭喜 ${winner.name} 晉級！`);
     setTimeout(() => finalizeMatch(winner), 3000);
   };
