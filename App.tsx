@@ -1136,7 +1136,7 @@ const App: React.FC = () => {
             <div className="bg-black/40 backdrop-blur-2xl p-12 rounded-[4rem] border-4 border-yellow-500/50 max-w-xl w-full shadow-2xl z-20">
                <p className="text-4xl font-bold mb-8">恭喜獲得最後大獎！</p>
                {roomMode === 'host' && (
-                 <button onClick={() => setGameState(prev => ({...prev, stage: GameStage.SETUP, finalWinner: null, allParticipants: [], winnersOfRound: []}))} className="px-12 py-5 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-xl transition-all border border-white/20">重新開始遊戲</button>
+                 <button onClick={() => setGameState(prev => ({...prev, stage: GameStage.SETUP, finalWinner: null, allParticipants: defaultParticipants, winnersOfRound: [], matches: [], currentMatchIndex: 0, roundNumber: 0}))} className="px-12 py-5 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-xl transition-all border border-white/20">重新開始遊戲</button>
                )}
             </div>
           </div>
