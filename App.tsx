@@ -48,9 +48,11 @@ const defaultParticipants: Participant[] = [
   { id: 'p4', name: '張美瑞' },
   { id: 'p5', name: '吳憶萍' },
   { id: 'p6', name: '范美齡' },
-  { id: 'p7', name: '廖文琪' },
+  { id: 'p7', name: '廖文褀' },
   { id: 'p8', name: '賴雲香' },
   { id: 'p9', name: '陳慧君' },
+  { id: 'p10', name: '林曉慧' },
+  { id: 'p11', name: '周紫渝' },
 ];
 
 const initialGameState: GameState = {
