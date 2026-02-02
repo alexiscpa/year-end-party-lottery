@@ -42,3 +42,6 @@ export interface GameState {
   isSimulating: boolean;
   finalWinner: Participant | null;
 }
+
+// 房間連線模式
+export type RoomMode = 'selecting' | 'host' | 'viewer';

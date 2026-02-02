@@ -1,8 +1,17 @@
 
-import React, { useState, useEffect } from 'react';
-import { GameStage, Participant, GameState, Match, Card, RPSChoice } from './types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { GameStage, Participant, GameState, Match, Card, RPSChoice, RoomMode } from './types';
 import { getMCCommentary } from './services/geminiService';
 import MCPanel from './components/MCPanel';
+import {
+  generateRoomId,
+  createRoom,
+  checkRoomExists,
+  syncGameState,
+  syncMatchView,
+  subscribeToRoom,
+  type MatchViewState,
+} from './services/gameSync';
 
 const SUITS: { symbol: '♠' | '♥' | '♦' | '♣', val: number }[] = [
   { symbol: '♠', val: 4 },
@@ -12,56 +21,200 @@ const SUITS: { symbol: '♠' | '♥' | '♦' | '♣', val: number }[] = [
 ];
 const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
+const initialMatchView = {
+  p1Hand: [] as Card[],
+  p2Hand: [] as Card[],
+  p1Score: 0,
+  p2Score: 0,
+  p1Choice: null as RPSChoice,
+  p2Choice: null as RPSChoice,
+  status: 'IDLE' as const,
+  roundMessage: "",
+  deck: [] as Card[],
+  currentPlayer: 1 as const,
+  p1Passed: false,
+  p2Passed: false,
+  p1Dice: [] as number[],
+  p2Dice: [] as number[],
+  p1DiceResult: '',
+  p2DiceResult: '',
+};
+
+const initialGameState: GameState = {
+  stage: GameStage.SETUP,
+  roundNumber: 0,
+  allParticipants: [],
+  currentPool: [],
+  matches: [],
+  currentMatchIndex: 0,
+  winnersOfRound: [],
+  mcCommentary: "歡迎來到尾牙競技場！請輸入參加者，準備開始刺激的巔峰對決！",
+  isSimulating: false,
+  finalWinner: null,
+};
+
 const App: React.FC = () => {
-  const [gameState, setGameState] = useState<GameState>({
-    stage: GameStage.SETUP,
-    roundNumber: 0,
-    allParticipants: [],
-    currentPool: [],
-    matches: [],
-    currentMatchIndex: 0,
-    winnersOfRound: [],
-    mcCommentary: "歡迎來到尾牙競技場！請輸入參加者，準備開始刺激的巔峰對決！",
-    isSimulating: false,
-    finalWinner: null,
-  });
+  // 房間狀態
+  const [roomMode, setRoomMode] = useState<RoomMode>('selecting');
+  const [roomId, setRoomId] = useState<string>('');
+  const [joinRoomInput, setJoinRoomInput] = useState<string>('');
+  const [roomError, setRoomError] = useState<string>('');
+  const [hostDisconnected, setHostDisconnected] = useState(false);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  const [gameState, setGameState] = useState<GameState>(initialGameState);
 
   const [newName, setNewName] = useState("");
-  const [matchView, setMatchView] = useState<{
-    p1Hand: Card[],
-    p2Hand: Card[],
-    p1Score: number,
-    p2Score: number,
-    p1Choice: RPSChoice,
-    p2Choice: RPSChoice,
-    status: 'IDLE' | 'ACTION' | 'RESULT' | 'P1_TURN' | 'P2_TURN',
-    roundMessage: string,
-    deck: Card[],
-    currentPlayer: 1 | 2,
-    p1Passed: boolean,
-    p2Passed: boolean,
-    p1Dice: number[],
-    p2Dice: number[],
-    p1DiceResult: string,
-    p2DiceResult: string,
-  }>({
-    p1Hand: [],
-    p2Hand: [],
-    p1Score: 0,
-    p2Score: 0,
-    p1Choice: null,
-    p2Choice: null,
-    status: 'IDLE',
-    roundMessage: "",
-    deck: [],
-    currentPlayer: 1,
-    p1Passed: false,
-    p2Passed: false,
-    p1Dice: [],
-    p2Dice: [],
-    p1DiceResult: '',
-    p2DiceResult: '',
-  });
+  const [matchView, setMatchView] = useState<typeof initialMatchView>(initialMatchView);
+
+  // 同步遊戲狀態到 Firebase（主持人專用）
+  const syncState = useCallback(async (state: GameState) => {
+    if (roomMode === 'host' && roomId) {
+      try {
+        await syncGameState(roomId, state);
+      } catch (err) {
+        console.error('Failed to sync game state:', err);
+      }
+    }
+  }, [roomMode, roomId]);
+
+  // 同步比賽視圖到 Firebase（主持人專用）
+  const syncView = useCallback(async (view: MatchViewState) => {
+    if (roomMode === 'host' && roomId) {
+      try {
+        await syncMatchView(roomId, view);
+      } catch (err) {
+        console.error('Failed to sync match view:', err);
+      }
+    }
+  }, [roomMode, roomId]);
+
+  // 主持人建立房間
+  const handleCreateRoom = async () => {
+    const newRoomId = generateRoomId();
+    setRoomId(newRoomId);
+    setRoomError('');
+
+    try {
+      const matchViewForSync: MatchViewState = {
+        p1Hand: initialMatchView.p1Hand,
+        p2Hand: initialMatchView.p2Hand,
+        p1Score: initialMatchView.p1Score,
+        p2Score: initialMatchView.p2Score,
+        p1Choice: initialMatchView.p1Choice,
+        p2Choice: initialMatchView.p2Choice,
+        status: initialMatchView.status,
+        roundMessage: initialMatchView.roundMessage,
+        currentPlayer: initialMatchView.currentPlayer,
+        p1Passed: initialMatchView.p1Passed,
+        p2Passed: initialMatchView.p2Passed,
+        p1Dice: initialMatchView.p1Dice,
+        p2Dice: initialMatchView.p2Dice,
+        p1DiceResult: initialMatchView.p1DiceResult,
+        p2DiceResult: initialMatchView.p2DiceResult,
+      };
+      await createRoom(newRoomId, initialGameState, matchViewForSync);
+      setRoomMode('host');
+    } catch (err) {
+      setRoomError('建立房間失敗，請檢查網路連線或 Firebase 設定');
+      console.error(err);
+    }
+  };
+
+  // 觀眾加入房間
+  const handleJoinRoom = async () => {
+    const code = joinRoomInput.toUpperCase().trim();
+    if (code.length !== 6) {
+      setRoomError('請輸入 6 位數房間代碼');
+      return;
+    }
+
+    setRoomError('');
+
+    try {
+      const exists = await checkRoomExists(code);
+      if (!exists) {
+        setRoomError('房間不存在，請確認代碼是否正確');
+        return;
+      }
+
+      setRoomId(code);
+      setRoomMode('viewer');
+
+      // 訂閱房間狀態
+      const unsubscribe = subscribeToRoom(
+        code,
+        (newGameState) => {
+          setGameState(newGameState);
+        },
+        (newMatchView) => {
+          setMatchView(prev => ({ ...prev, ...newMatchView }));
+        },
+        () => {
+          setHostDisconnected(true);
+        }
+      );
+
+      unsubscribeRef.current = unsubscribe;
+    } catch (err) {
+      setRoomError('加入房間失敗，請檢查網路連線');
+      console.error(err);
+    }
+  };
+
+  // 離開房間
+  const handleLeaveRoom = () => {
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+    setRoomMode('selecting');
+    setRoomId('');
+    setJoinRoomInput('');
+    setRoomError('');
+    setHostDisconnected(false);
+    setGameState(initialGameState);
+    setMatchView(initialMatchView);
+  };
+
+  // 清理訂閱
+  useEffect(() => {
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, []);
+
+  // 主持人狀態變更時同步
+  useEffect(() => {
+    if (roomMode === 'host' && roomId) {
+      syncState(gameState);
+    }
+  }, [gameState, roomMode, roomId, syncState]);
+
+  useEffect(() => {
+    if (roomMode === 'host' && roomId) {
+      const viewForSync: MatchViewState = {
+        p1Hand: matchView.p1Hand,
+        p2Hand: matchView.p2Hand,
+        p1Score: matchView.p1Score,
+        p2Score: matchView.p2Score,
+        p1Choice: matchView.p1Choice,
+        p2Choice: matchView.p2Choice,
+        status: matchView.status,
+        roundMessage: matchView.roundMessage,
+        currentPlayer: matchView.currentPlayer,
+        p1Passed: matchView.p1Passed,
+        p2Passed: matchView.p2Passed,
+        p1Dice: matchView.p1Dice,
+        p2Dice: matchView.p2Dice,
+        p1DiceResult: matchView.p1DiceResult,
+        p2DiceResult: matchView.p2DiceResult,
+      };
+      syncView(viewForSync);
+    }
+  }, [matchView, roomMode, roomId, syncView]);
 
   const updateMC = async (text: string) => {
     const commentary = await getMCCommentary(text);
@@ -658,36 +811,138 @@ const App: React.FC = () => {
       </header>
 
       <main className="w-full max-w-6xl flex-1 flex flex-col z-10">
-        {gameState.stage === GameStage.SETUP && (
+        {/* 房間選擇畫面 */}
+        {roomMode === 'selecting' && (
+          <div className="flex flex-col items-center justify-center animate-fade-in py-12">
+            <div className="w-full max-w-lg bg-black/40 backdrop-blur-xl p-8 rounded-[3rem] border-2 border-yellow-500/30 shadow-2xl">
+              <h2 className="text-3xl font-black mb-8 text-yellow-500 text-center">選擇模式</h2>
+
+              <div className="space-y-6">
+                <button
+                  onClick={handleCreateRoom}
+                  className="w-full py-6 bg-gradient-to-r from-red-600 to-red-800 rounded-3xl font-black text-2xl shadow-2xl border-b-8 border-red-900 hover:translate-y-1 hover:border-b-4 transition-all"
+                >
+                  建立房間 (主持人)
+                </button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-white/20"></div>
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-black/40 px-4 text-white/60 text-sm">或</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    value={joinRoomInput}
+                    onChange={(e) => setJoinRoomInput(e.target.value.toUpperCase())}
+                    placeholder="輸入房間代碼"
+                    maxLength={6}
+                    className="w-full bg-white/10 border-2 border-white/20 rounded-2xl px-6 py-4 text-2xl text-center tracking-[0.5em] outline-none focus:border-yellow-500 transition-all uppercase"
+                  />
+                  <button
+                    onClick={handleJoinRoom}
+                    disabled={joinRoomInput.length !== 6}
+                    className="w-full py-5 bg-gradient-to-r from-blue-600 to-blue-800 disabled:from-gray-700 disabled:to-gray-700 rounded-3xl font-black text-xl shadow-2xl border-b-8 border-blue-900 disabled:border-gray-800 hover:translate-y-1 hover:border-b-4 transition-all"
+                  >
+                    加入房間 (觀眾)
+                  </button>
+                </div>
+
+                {roomError && (
+                  <div className="text-red-400 text-center font-bold bg-red-900/30 rounded-xl p-3">
+                    {roomError}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 主持人斷線提示 (觀眾端) */}
+        {hostDisconnected && roomMode === 'viewer' && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div className="bg-black/90 p-8 rounded-3xl border-2 border-red-500 text-center">
+              <div className="text-6xl mb-4">😢</div>
+              <h3 className="text-2xl font-black text-red-500 mb-4">主持人已離線</h3>
+              <button
+                onClick={handleLeaveRoom}
+                className="px-8 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold transition-all"
+              >
+                返回首頁
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 房間資訊顯示 */}
+        {roomMode !== 'selecting' && (
+          <div className="flex justify-between items-center mb-4 bg-black/30 rounded-2xl px-6 py-3">
+            <div className="flex items-center gap-4">
+              <span className={`px-3 py-1 rounded-full text-sm font-bold ${roomMode === 'host' ? 'bg-red-600' : 'bg-blue-600'}`}>
+                {roomMode === 'host' ? '主持人' : '觀眾'}
+              </span>
+              <span className="text-yellow-400 font-mono text-xl tracking-widest">
+                房間: {roomId}
+              </span>
+            </div>
+            <button
+              onClick={handleLeaveRoom}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-bold transition-all"
+            >
+              離開房間
+            </button>
+          </div>
+        )}
+
+        {roomMode !== 'selecting' && gameState.stage === GameStage.SETUP && (
           <div className="flex flex-col items-center justify-center animate-fade-in py-12">
             <div className="w-full max-w-2xl bg-black/40 backdrop-blur-xl p-8 rounded-[3rem] border-2 border-yellow-500/30 shadow-2xl">
               <h2 className="text-3xl font-black mb-6 text-yellow-500 text-center">報名名單 🧧</h2>
-              <div className="flex gap-2 mb-8">
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addParticipant()}
-                  placeholder="輸入參賽者姓名"
-                  className="flex-1 bg-white/10 border-2 border-white/20 rounded-2xl px-6 py-3 text-xl outline-none focus:border-yellow-500 transition-all"
-                />
-                <button onClick={addParticipant} className="px-8 bg-yellow-500 text-red-900 font-black rounded-2xl hover:bg-yellow-400 transition-all shadow-lg">加入</button>
-              </div>
+              {/* 主持人可以新增參賽者 */}
+              {roomMode === 'host' && (
+                <div className="flex gap-2 mb-8">
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addParticipant()}
+                    placeholder="輸入參賽者姓名"
+                    className="flex-1 bg-white/10 border-2 border-white/20 rounded-2xl px-6 py-3 text-xl outline-none focus:border-yellow-500 transition-all"
+                  />
+                  <button onClick={addParticipant} className="px-8 bg-yellow-500 text-red-900 font-black rounded-2xl hover:bg-yellow-400 transition-all shadow-lg">加入</button>
+                </div>
+              )}
+              {/* 觀眾提示 */}
+              {roomMode === 'viewer' && (
+                <div className="text-center text-white/60 mb-8 p-4 bg-white/5 rounded-xl">
+                  等待主持人新增參賽者並開始遊戲...
+                </div>
+              )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                 {gameState.allParticipants.map(p => (
                   <div key={p.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10 group">
                     <span className="truncate font-bold">{p.name}</span>
-                    <button onClick={() => setGameState(prev => ({...prev, allParticipants: prev.allParticipants.filter(x => x.id !== p.id)}))} className="text-red-500 font-black">×</button>
+                    {/* 只有主持人可以刪除 */}
+                    {roomMode === 'host' && (
+                      <button onClick={() => setGameState(prev => ({...prev, allParticipants: prev.allParticipants.filter(x => x.id !== p.id)}))} className="text-red-500 font-black">×</button>
+                    )}
                   </div>
                 ))}
               </div>
-              <button
-                onClick={startTournament}
-                disabled={gameState.allParticipants.length < 2}
-                className="w-full py-6 bg-gradient-to-r from-red-600 to-red-800 disabled:from-gray-700 rounded-3xl font-black text-3xl shadow-2xl border-b-8 border-red-900 hover:translate-y-1 hover:border-b-4 transition-all"
-              >
-                開始冒險！ ⚔️
-              </button>
+              {/* 只有主持人可以開始遊戲 */}
+              {roomMode === 'host' && (
+                <button
+                  onClick={startTournament}
+                  disabled={gameState.allParticipants.length < 2}
+                  className="w-full py-6 bg-gradient-to-r from-red-600 to-red-800 disabled:from-gray-700 rounded-3xl font-black text-3xl shadow-2xl border-b-8 border-red-900 hover:translate-y-1 hover:border-b-4 transition-all"
+                >
+                  開始冒險！ ⚔️
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -758,8 +1013,8 @@ const App: React.FC = () => {
                         {gameState.roundNumber === 2 && matchView.p1Score > 0 ? `${matchView.p1Score} 點` : ''}
                         {gameState.roundNumber === 3 && matchView.p1Hand.length === 5 ? HAND_NAMES[evaluatePokerHand(matchView.p1Hand).rank] : ''}
                       </div>
-                      {/* P1 控制按鈕 */}
-                      {gameState.roundNumber === 2 && matchView.status === 'P1_TURN' && matchView.p1Score <= 10.5 && (
+                      {/* P1 控制按鈕 - 只有主持人可以操作 */}
+                      {roomMode === 'host' && gameState.roundNumber === 2 && matchView.status === 'P1_TURN' && matchView.p1Score <= 10.5 && (
                         <div className="flex gap-4 mt-2">
                           <button onClick={handleHit} className="px-6 py-3 bg-green-600 hover:bg-green-500 rounded-xl font-black text-lg transition-all">補牌</button>
                           <button onClick={handlePass} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-black text-lg transition-all">停牌</button>
@@ -788,8 +1043,8 @@ const App: React.FC = () => {
                         {gameState.roundNumber === 2 && matchView.p2Score > 0 ? `${matchView.p2Score} 點` : ''}
                         {gameState.roundNumber === 3 && matchView.p2Hand.length === 5 ? HAND_NAMES[evaluatePokerHand(matchView.p2Hand).rank] : ''}
                       </div>
-                      {/* P2 控制按鈕 */}
-                      {gameState.roundNumber === 2 && matchView.status === 'P2_TURN' && matchView.p2Score <= 10.5 && (
+                      {/* P2 控制按鈕 - 只有主持人可以操作 */}
+                      {roomMode === 'host' && gameState.roundNumber === 2 && matchView.status === 'P2_TURN' && matchView.p2Score <= 10.5 && (
                         <div className="flex gap-4 mt-2">
                           <button onClick={handleHit} className="px-6 py-3 bg-green-600 hover:bg-green-500 rounded-xl font-black text-lg transition-all">補牌</button>
                           <button onClick={handlePass} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-black text-lg transition-all">停牌</button>
@@ -812,12 +1067,19 @@ const App: React.FC = () => {
                       </p>
                     </div>
                   )}
-                  <button
-                    onClick={gameState.currentMatchIndex >= gameState.matches.length ? () => prepareRound(gameState.winnersOfRound, gameState.roundNumber + 1) : playMatch}
-                    className="group px-16 py-8 bg-gradient-to-b from-yellow-400 to-yellow-600 text-red-900 font-black text-3xl rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all border-4 border-yellow-200"
-                  >
-                    {gameState.currentMatchIndex >= gameState.matches.length ? "進入下一關 ➔" : "開戰！ FIGHT"}
-                  </button>
+                  {/* 只有主持人可以控制遊戲進行 */}
+                  {roomMode === 'host' ? (
+                    <button
+                      onClick={gameState.currentMatchIndex >= gameState.matches.length ? () => prepareRound(gameState.winnersOfRound, gameState.roundNumber + 1) : playMatch}
+                      className="group px-16 py-8 bg-gradient-to-b from-yellow-400 to-yellow-600 text-red-900 font-black text-3xl rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all border-4 border-yellow-200"
+                    >
+                      {gameState.currentMatchIndex >= gameState.matches.length ? "進入下一關 ➔" : "開戰！ FIGHT"}
+                    </button>
+                  ) : (
+                    <div className="text-xl text-white/60 bg-white/5 px-8 py-4 rounded-2xl">
+                      等待主持人操作...
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -833,7 +1095,9 @@ const App: React.FC = () => {
             
             <div className="bg-black/40 backdrop-blur-2xl p-12 rounded-[4rem] border-4 border-yellow-500/50 max-w-xl w-full shadow-2xl z-20">
                <p className="text-4xl font-bold mb-8">恭喜獲得最後大獎！</p>
-               <button onClick={() => setGameState(prev => ({...prev, stage: GameStage.SETUP, finalWinner: null}))} className="px-12 py-5 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-xl transition-all border border-white/20">重新開始遊戲</button>
+               {roomMode === 'host' && (
+                 <button onClick={() => setGameState(prev => ({...prev, stage: GameStage.SETUP, finalWinner: null, allParticipants: [], winnersOfRound: []}))} className="px-12 py-5 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-xl transition-all border border-white/20">重新開始遊戲</button>
+               )}
             </div>
           </div>
         )}
