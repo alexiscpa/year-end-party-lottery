@@ -81,6 +81,70 @@ const App: React.FC = () => {
 
   const [newName, setNewName] = useState("");
   const [matchView, setMatchView] = useState<typeof initialMatchView>(initialMatchView);
+  const matchViewRef = useRef(matchView);
+
+  // 使用 ref 來保存最新的 roomId 和 roomMode，解決閉包問題
+  const roomIdRef = useRef(roomId);
+  const roomModeRef = useRef(roomMode);
+
+  // 每次 roomId 或 roomMode 變化時更新 ref
+  useEffect(() => {
+    roomIdRef.current = roomId;
+    roomModeRef.current = roomMode;
+  }, [roomId, roomMode]);
+
+  // 保持 matchViewRef 與 matchView 同步
+  useEffect(() => {
+    matchViewRef.current = matchView;
+  }, [matchView]);
+
+  // 直接同步到 Firebase 的函數
+  const syncViewDirectly = async (view: typeof initialMatchView) => {
+    const currentRoomId = roomIdRef.current;
+    const currentRoomMode = roomModeRef.current;
+    console.log('[DEBUG] syncViewDirectly called:', { currentRoomMode, currentRoomId, hasView: !!view });
+    if (currentRoomMode === 'host' && currentRoomId) {
+      // Firebase 不接受 undefined，所有欄位都必須有預設值
+      const viewForSync: MatchViewState = {
+        p1Hand: view.p1Hand || [],
+        p2Hand: view.p2Hand || [],
+        p1Score: view.p1Score ?? 0,
+        p2Score: view.p2Score ?? 0,
+        p1Choice: view.p1Choice ?? null,
+        p2Choice: view.p2Choice ?? null,
+        status: view.status || 'IDLE',
+        roundMessage: view.roundMessage || '',
+        currentPlayer: view.currentPlayer ?? 1,
+        p1Passed: view.p1Passed ?? false,
+        p2Passed: view.p2Passed ?? false,
+        p1Dice: view.p1Dice || [],
+        p2Dice: view.p2Dice || [],
+        p1DiceResult: view.p1DiceResult || '',
+        p2DiceResult: view.p2DiceResult || '',
+      };
+      try {
+        await syncMatchView(currentRoomId, viewForSync);
+      } catch (err) {
+        console.error('Failed to sync match view:', err);
+      }
+    }
+  };
+
+  // 更新 matchView 並立即同步到 Firebase（用於遊戲動畫）
+  const updateAndSyncMatchView = async (updater: ((prev: typeof initialMatchView) => typeof initialMatchView) | typeof initialMatchView) => {
+    console.log('[DEBUG] updateAndSyncMatchView called');
+    const currentView = matchViewRef.current;
+    const newView = typeof updater === 'function' ? updater(currentView) : updater;
+    matchViewRef.current = newView;
+    setMatchView(newView);
+    // 使用 ref 來獲取最新的值
+    await syncViewDirectly(newView);
+  };
+
+  // 保持舊的 flushMatchViewToFirebase 以兼容現有代碼
+  const flushMatchViewToFirebase = async () => {
+    await syncViewDirectly(matchViewRef.current);
+  };
 
   // 同步遊戲狀態到 Firebase（主持人專用）
   const syncState = useCallback(async (state: GameState) => {
@@ -163,7 +227,17 @@ const App: React.FC = () => {
           setGameState(newGameState);
         },
         (newMatchView) => {
-          setMatchView(prev => ({ ...prev, ...newMatchView }));
+          // 確保陣列類型的資料被正確處理（Firebase 可能將空陣列轉為 undefined）
+          const updatedView = {
+            ...initialMatchView,
+            ...newMatchView,
+            p1Hand: newMatchView.p1Hand || [],
+            p2Hand: newMatchView.p2Hand || [],
+            p1Dice: newMatchView.p1Dice || [],
+            p2Dice: newMatchView.p2Dice || [],
+          };
+          matchViewRef.current = updatedView;
+          setMatchView(updatedView);
         },
         () => {
           setHostDisconnected(true);
@@ -298,12 +372,16 @@ const App: React.FC = () => {
         else if (['J', 'Q', 'K'].includes(value)) points = 0.5;
         else points = parseInt(value);
 
+        // 撲克牌 rank: A 是最大的 (14)，其他按順序 2-13
+        let rank = idx + 1;
+        if (value === 'A') rank = 14; // A 是最大的牌
+
         deck.push({
           suit: suit.symbol,
           suitValue: suit.val,
           value,
           points,
-          rank: idx + 1
+          rank
         });
       });
     });
@@ -422,7 +500,7 @@ const App: React.FC = () => {
     );
 
     // 初始化
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       p1Score: 0,
       p2Score: 0,
@@ -438,7 +516,7 @@ const App: React.FC = () => {
 
     // P1 擲骰子動畫 - 快速切換隨機數字
     for (let i = 0; i < 10; i++) {
-      setMatchView(prev => ({
+      await updateAndSyncMatchView(prev => ({
         ...prev,
         p1Dice: rollDice(), // 隨機顯示
       }));
@@ -446,7 +524,7 @@ const App: React.FC = () => {
     }
 
     // P1 定格結果
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       p1Dice: p1Dice,
       p1DiceResult: p1Result.name,
@@ -456,7 +534,7 @@ const App: React.FC = () => {
     await new Promise(r => setTimeout(r, 1500));
 
     // P2 擲骰子
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       roundMessage: `${match.p2!.name} 擲骰子...`
     }));
@@ -465,7 +543,7 @@ const App: React.FC = () => {
 
     // P2 擲骰子動畫
     for (let i = 0; i < 10; i++) {
-      setMatchView(prev => ({
+      await updateAndSyncMatchView(prev => ({
         ...prev,
         p2Dice: rollDice(),
       }));
@@ -473,7 +551,7 @@ const App: React.FC = () => {
     }
 
     // P2 定格結果
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       p2Dice: p2Dice,
       p2DiceResult: p2Result.name,
@@ -483,7 +561,7 @@ const App: React.FC = () => {
     await new Promise(r => setTimeout(r, 1500));
 
     // 顯示雙方結果比較，等待 5 秒
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       roundMessage: `${match.p1.name}【${p1Result.name}】 vs ${match.p2!.name}【${p2Result.name}】`
     }));
@@ -495,7 +573,7 @@ const App: React.FC = () => {
     // 決定勝負
     const winner = p1Result.rank > p2Result.rank ? match.p1 : match.p2!;
 
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       status: 'RESULT',
       roundMessage: `🎉 ${winner.name} 獲勝！🎉`
@@ -512,7 +590,7 @@ const App: React.FC = () => {
     const c1 = deck.pop()!;
     const c2 = deck.pop()!;
 
-    setMatchView({
+    await updateAndSyncMatchView({
       p1Hand: [c1],
       p2Hand: [c2],
       p1Score: c1.points,
@@ -525,30 +603,36 @@ const App: React.FC = () => {
       currentPlayer: 1,
       p1Passed: false,
       p2Passed: false,
+      p1Dice: [],
+      p2Dice: [],
+      p1DiceResult: '',
+      p2DiceResult: '',
     });
   };
 
-  const handleHit = () => {
+  const handleHit = async () => {
     const match = gameState.matches[gameState.currentMatchIndex];
-    const newCard = matchView.deck.pop()!;
+    const currentView = matchViewRef.current;
+    const newCard = currentView.deck[currentView.deck.length - 1];
+    const newDeck = currentView.deck.slice(0, -1);
 
-    if (matchView.currentPlayer === 1) {
-      const newHand = [...matchView.p1Hand, newCard];
+    if (currentView.currentPlayer === 1) {
+      const newHand = [...currentView.p1Hand, newCard];
       const newScore = newHand.reduce((s, c) => s + c.points, 0);
       const isBust = newScore > 10.5;
 
-      setMatchView(prev => ({
+      await updateAndSyncMatchView(prev => ({
         ...prev,
         p1Hand: newHand,
         p1Score: newScore,
-        deck: prev.deck,
+        deck: newDeck,
         roundMessage: isBust ? `${match.p1.name} 爆掉了！${newScore} 點` : `${match.p1.name} 補牌得到 ${newCard.suit}${newCard.value}`,
       }));
 
       if (isBust) {
         updateMC(`${match.p1.name} 爆掉了！${newScore} 點，換 ${match.p2!.name}！`);
-        setTimeout(() => {
-          setMatchView(prev => ({
+        setTimeout(async () => {
+          await updateAndSyncMatchView(prev => ({
             ...prev,
             currentPlayer: 2,
             status: 'P2_TURN',
@@ -558,15 +642,15 @@ const App: React.FC = () => {
         }, 1500);
       }
     } else {
-      const newHand = [...matchView.p2Hand, newCard];
+      const newHand = [...currentView.p2Hand, newCard];
       const newScore = newHand.reduce((s, c) => s + c.points, 0);
       const isBust = newScore > 10.5;
 
-      setMatchView(prev => ({
+      await updateAndSyncMatchView(prev => ({
         ...prev,
         p2Hand: newHand,
         p2Score: newScore,
-        deck: prev.deck,
+        deck: newDeck,
         roundMessage: isBust ? `${match.p2!.name} 爆掉了！${newScore} 點` : `${match.p2!.name} 補牌得到 ${newCard.suit}${newCard.value}`,
       }));
 
@@ -577,12 +661,13 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePass = () => {
+  const handlePass = async () => {
     const match = gameState.matches[gameState.currentMatchIndex];
+    const currentView = matchViewRef.current;
 
-    if (matchView.currentPlayer === 1) {
+    if (currentView.currentPlayer === 1) {
       updateMC(`${match.p1.name} 選擇停牌！換 ${match.p2!.name}！`);
-      setMatchView(prev => ({
+      await updateAndSyncMatchView(prev => ({
         ...prev,
         currentPlayer: 2,
         status: 'P2_TURN',
@@ -591,7 +676,7 @@ const App: React.FC = () => {
       }));
     } else {
       updateMC(`${match.p2!.name} 選擇停牌！`);
-      setMatchView(prev => ({
+      await updateAndSyncMatchView(prev => ({
         ...prev,
         p2Passed: true,
       }));
@@ -599,13 +684,14 @@ const App: React.FC = () => {
     }
   };
 
-  const determineRound2Winner = (match: Match) => {
-    const s1 = matchView.p1Hand.reduce((s, c) => s + c.points, 0);
-    const s2 = matchView.p2Hand.reduce((s, c) => s + c.points, 0);
+  const determineRound2Winner = async (match: Match) => {
+    const currentView = matchViewRef.current;
+    const s1 = currentView.p1Hand.reduce((s, c) => s + c.points, 0);
+    const s2 = currentView.p2Hand.reduce((s, c) => s + c.points, 0);
     const p1Bust = s1 > 10.5;
     const p2Bust = s2 > 10.5;
-    const p1Five = matchView.p1Hand.length === 5 && !p1Bust;
-    const p2Five = matchView.p2Hand.length === 5 && !p2Bust;
+    const p1Five = currentView.p1Hand.length === 5 && !p1Bust;
+    const p2Five = currentView.p2Hand.length === 5 && !p2Bust;
 
     let winner: Participant | null = null;
 
@@ -625,13 +711,13 @@ const App: React.FC = () => {
 
     // 同分時重新開始十點半
     if (winner === null) {
-      setMatchView(prev => ({ ...prev, status: 'RESULT', roundMessage: `平手！${s1} 點 vs ${s2} 點，重新比賽！` }));
+      await updateAndSyncMatchView(prev => ({ ...prev, status: 'RESULT', roundMessage: `平手！${s1} 點 vs ${s2} 點，重新比賽！` }));
       updateMC(`${match.p1.name} ${s1} 點 vs ${match.p2!.name} ${s2} 點，平手！重新發牌！`);
       setTimeout(() => startTenHalfRound2(match), 3000);
       return;
     }
 
-    setMatchView(prev => ({ ...prev, status: 'RESULT', roundMessage: `🎉 ${winner.name} 獲勝！🎉` }));
+    await updateAndSyncMatchView(prev => ({ ...prev, status: 'RESULT', roundMessage: `🎉 ${winner.name} 獲勝！🎉` }));
     updateMC(`${match.p1.name} ${s1} 點 vs ${match.p2!.name} ${s2} 點。恭喜 ${winner.name} 晉級！`);
     setTimeout(() => finalizeMatch(winner), 3000);
   };
@@ -659,12 +745,10 @@ const App: React.FC = () => {
     const isFlush = suits.every(s => s === suits[0]);
 
     // 檢查順子 (包含 A-2-3-4-5 和 10-J-Q-K-A)
-    const isStraight = (
-      (ranks[0] - ranks[4] === 4 && new Set(ranks).size === 5) ||
-      (ranks.join(',') === '13,5,4,3,2') // A-2-3-4-5 (A=13 在 rank 中)
-    );
-    // 修正: A 在這裡是 rank=1，所以 A-2-3-4-5 是 5,4,3,2,1
-    const isLowStraight = ranks.join(',') === '5,4,3,2,1';
+    // A 的 rank 是 14，所以：
+    // - A-2-3-4-5 (最小順子): [14, 5, 4, 3, 2]
+    // - 10-J-Q-K-A (最大順子): [14, 13, 12, 11, 10]
+    const isLowStraight = ranks.join(',') === '14,5,4,3,2';
     const isHighStraight = ranks[0] - ranks[4] === 4 && new Set(ranks).size === 5;
     const straightCheck = isLowStraight || isHighStraight;
 
@@ -741,7 +825,7 @@ const App: React.FC = () => {
     const h1: Card[] = [];
     const h2: Card[] = [];
 
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       p1Hand: [],
       p2Hand: [],
@@ -754,11 +838,11 @@ const App: React.FC = () => {
     // 逐張發牌動畫
     for (let i = 0; i < 5; i++) {
       h1.push(deck.pop()!);
-      setMatchView(prev => ({ ...prev, p1Hand: [...h1] }));
+      await updateAndSyncMatchView(prev => ({ ...prev, p1Hand: [...h1] }));
       await new Promise(r => setTimeout(r, 400));
 
       h2.push(deck.pop()!);
-      setMatchView(prev => ({ ...prev, p2Hand: [...h2] }));
+      await updateAndSyncMatchView(prev => ({ ...prev, p2Hand: [...h2] }));
       await new Promise(r => setTimeout(r, 400));
     }
 
@@ -770,7 +854,7 @@ const App: React.FC = () => {
     const result = compareHands(h1, h2);
 
     // 顯示雙方牌型，等待 5 秒讓玩家確認
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       roundMessage: `${match.p1.name}【${eval1.name}】 vs ${match.p2!.name}【${eval2.name}】`
     }));
@@ -781,7 +865,7 @@ const App: React.FC = () => {
 
     // 平手時重新發牌比賽
     if (result === 0) {
-      setMatchView(prev => ({
+      await updateAndSyncMatchView(prev => ({
         ...prev,
         status: 'RESULT',
         roundMessage: `平手！${eval1.name} vs ${eval2.name}，重新比賽！`,
@@ -795,7 +879,7 @@ const App: React.FC = () => {
 
     const winner = result > 0 ? match.p1 : match.p2!;
 
-    setMatchView(prev => ({
+    await updateAndSyncMatchView(prev => ({
       ...prev,
       status: 'RESULT',
       roundMessage: `🎉 ${winner.name} 獲勝！🎉`,
@@ -835,9 +919,9 @@ const App: React.FC = () => {
 
   const renderDice = (dice: number[]) => (
     <div className="flex gap-2">
-      {dice.map((d, i) => (
+      {(dice || []).map((d, i) => (
         <div key={i} className="animate-scale-up w-12 h-12 md:w-16 md:h-16 bg-white rounded-xl flex items-center justify-center shadow-lg border-2 border-red-200">
-          <span className="text-4xl md:text-5xl text-red-600">{DICE_FACES[d]}</span>
+          <span className="text-4xl md:text-5xl text-red-600">{DICE_FACES[d] || '?'}</span>
         </div>
       ))}
     </div>
@@ -1043,21 +1127,23 @@ const App: React.FC = () => {
                       <div className="text-xl font-black">{gameState.matches[gameState.currentMatchIndex].p1.name}</div>
                       <div className="h-32 flex items-center justify-center flex-wrap gap-1">
                         {gameState.roundNumber === 1 ? (
-                          matchView.p1Dice.length > 0 ? renderDice(matchView.p1Dice) : <div className="text-6xl animate-bounce">🎲</div>
+                          (matchView.p1Dice?.length > 0) ? renderDice(matchView.p1Dice) : <div className="text-6xl animate-bounce">🎲</div>
                         ) : (
-                          matchView.p1Hand.map((c, idx) => renderCard(c, idx))
+                          (matchView.p1Hand || []).map((c, idx) => renderCard(c, idx))
                         )}
                       </div>
                       <div className="text-2xl font-black text-yellow-400 h-8">
                         {gameState.roundNumber === 1 && matchView.p1DiceResult ? matchView.p1DiceResult : ''}
                         {gameState.roundNumber === 2 && matchView.p1Score > 0 ? `${matchView.p1Score} 點` : ''}
-                        {gameState.roundNumber === 3 && matchView.p1Hand.length === 5 ? HAND_NAMES[evaluatePokerHand(matchView.p1Hand).rank] : ''}
+                        {gameState.roundNumber === 3 && (matchView.p1Hand?.length === 5) ? HAND_NAMES[evaluatePokerHand(matchView.p1Hand).rank] : ''}
                       </div>
-                      {/* P1 控制按鈕 - 只有主持人可以操作 */}
+                      {/* P1 控制按鈕 - 只有主持人可以操作，6點以下必須補牌 */}
                       {roomMode === 'host' && gameState.roundNumber === 2 && matchView.status === 'P1_TURN' && matchView.p1Score <= 10.5 && (
                         <div className="flex gap-4 mt-2">
                           <button onClick={handleHit} className="px-6 py-3 bg-green-600 hover:bg-green-500 rounded-xl font-black text-lg transition-all">補牌</button>
-                          <button onClick={handlePass} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-black text-lg transition-all">停牌</button>
+                          {matchView.p1Score >= 6 && (
+                            <button onClick={handlePass} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-black text-lg transition-all">停牌</button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1073,21 +1159,23 @@ const App: React.FC = () => {
                       <div className="text-xl font-black">{gameState.matches[gameState.currentMatchIndex].p2?.name}</div>
                       <div className="h-32 flex items-center justify-center flex-wrap gap-1">
                         {gameState.roundNumber === 1 ? (
-                          matchView.p2Dice.length > 0 ? renderDice(matchView.p2Dice) : <div className="text-6xl animate-bounce">🎲</div>
+                          (matchView.p2Dice?.length > 0) ? renderDice(matchView.p2Dice) : <div className="text-6xl animate-bounce">🎲</div>
                         ) : (
-                          matchView.p2Hand.map((c, idx) => renderCard(c, idx))
+                          (matchView.p2Hand || []).map((c, idx) => renderCard(c, idx))
                         )}
                       </div>
                       <div className="text-2xl font-black text-yellow-400 h-8">
                         {gameState.roundNumber === 1 && matchView.p2DiceResult ? matchView.p2DiceResult : ''}
                         {gameState.roundNumber === 2 && matchView.p2Score > 0 ? `${matchView.p2Score} 點` : ''}
-                        {gameState.roundNumber === 3 && matchView.p2Hand.length === 5 ? HAND_NAMES[evaluatePokerHand(matchView.p2Hand).rank] : ''}
+                        {gameState.roundNumber === 3 && (matchView.p2Hand?.length === 5) ? HAND_NAMES[evaluatePokerHand(matchView.p2Hand).rank] : ''}
                       </div>
-                      {/* P2 控制按鈕 - 只有主持人可以操作 */}
+                      {/* P2 控制按鈕 - 只有主持人可以操作，6點以下必須補牌 */}
                       {roomMode === 'host' && gameState.roundNumber === 2 && matchView.status === 'P2_TURN' && matchView.p2Score <= 10.5 && (
                         <div className="flex gap-4 mt-2">
                           <button onClick={handleHit} className="px-6 py-3 bg-green-600 hover:bg-green-500 rounded-xl font-black text-lg transition-all">補牌</button>
-                          <button onClick={handlePass} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-black text-lg transition-all">停牌</button>
+                          {matchView.p2Score >= 6 && (
+                            <button onClick={handlePass} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-black text-lg transition-all">停牌</button>
+                          )}
                         </div>
                       )}
                     </div>
