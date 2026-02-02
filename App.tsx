@@ -779,10 +779,21 @@ const App: React.FC = () => {
 
     await new Promise(r => setTimeout(r, 5000));
 
-    let winner: Participant;
-    if (result > 0) winner = match.p1;
-    else if (result < 0) winner = match.p2!;
-    else winner = Math.random() > 0.5 ? match.p1 : match.p2!; // 完全平手隨機
+    // 平手時重新發牌比賽
+    if (result === 0) {
+      setMatchView(prev => ({
+        ...prev,
+        status: 'RESULT',
+        roundMessage: `平手！${eval1.name} vs ${eval2.name}，重新比賽！`,
+        p1Score: eval1.rank,
+        p2Score: eval2.rank
+      }));
+      updateMC(`${match.p1.name}【${eval1.name}】vs ${match.p2!.name}【${eval2.name}】，平手！重新發牌！`);
+      setTimeout(() => simulatePokerShowdown(match), 3000);
+      return;
+    }
+
+    const winner = result > 0 ? match.p1 : match.p2!;
 
     setMatchView(prev => ({
       ...prev,
@@ -792,7 +803,7 @@ const App: React.FC = () => {
       p2Score: eval2.rank
     }));
 
-    updateMC(`恭喜 ${winner.name} 成為最終冠軍！`);
+    updateMC(`恭喜 ${winner.name} 晉級！`);
     setTimeout(() => finalizeMatch(winner), 4000);
   };
 
