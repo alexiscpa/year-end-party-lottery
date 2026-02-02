@@ -40,10 +40,23 @@ const initialMatchView = {
   p2DiceResult: '',
 };
 
+// 預設參賽者名單
+const defaultParticipants: Participant[] = [
+  { id: 'p1', name: '王彩菁' },
+  { id: 'p2', name: '康彥珺' },
+  { id: 'p3', name: '龔惠華' },
+  { id: 'p4', name: '張美瑞' },
+  { id: 'p5', name: '吳憶萍' },
+  { id: 'p6', name: '范美齡' },
+  { id: 'p7', name: '廖文琪' },
+  { id: 'p8', name: '賴雲香' },
+  { id: 'p9', name: '陳慧君' },
+];
+
 const initialGameState: GameState = {
   stage: GameStage.SETUP,
   roundNumber: 0,
-  allParticipants: [],
+  allParticipants: defaultParticipants,
   currentPool: [],
   matches: [],
   currentMatchIndex: 0,
