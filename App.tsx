@@ -42,17 +42,15 @@ const initialMatchView = {
 
 // 預設參賽者名單
 const defaultParticipants: Participant[] = [
-  { id: 'p1', name: '王彩菁' },
-  { id: 'p2', name: '康彥珺' },
-  { id: 'p3', name: '龔惠華' },
-  { id: 'p4', name: '張美瑞' },
-  { id: 'p5', name: '吳憶萍' },
-  { id: 'p6', name: '范美齡' },
-  { id: 'p7', name: '廖文褀' },
-  { id: 'p8', name: '賴雲香' },
-  { id: 'p9', name: '陳慧君' },
-  { id: 'p10', name: '林曉慧' },
-  { id: 'p11', name: '周紫渝' },
+  { id: 'p1', name: '蔣文台' },
+  { id: 'p2', name: '周雅惠' },
+  { id: 'p3', name: '陳姿惠' },
+  { id: 'p4', name: '賴柔含' },
+  { id: 'p5', name: '黃軍彥' },
+  { id: 'p6', name: '羅振桓' },
+  { id: 'p7', name: '陳昱琳' },
+  { id: 'p8', name: '張姀晅' },
+  { id: 'p9', name: '林俊平' },
 ];
 
 const initialGameState: GameState = {
