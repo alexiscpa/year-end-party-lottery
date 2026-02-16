@@ -712,10 +712,8 @@ const App: React.FC = () => {
     else if (p1Bust && !p2Bust) winner = match.p2!;
     else if (!p1Bust && p2Bust) winner = match.p1;
     else if (p1Bust && p2Bust) {
-      // 都爆掉，分數低的獲勝；同分則重賽
-      if (s1 < s2) winner = match.p1;
-      else if (s2 < s1) winner = match.p2!;
-      else winner = null; // 同分，重賽
+      // 都爆掉，平手重賽
+      winner = null;
     }
     else if (s1 > s2) winner = match.p1;
     else if (s2 > s1) winner = match.p2!;
